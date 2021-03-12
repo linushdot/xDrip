@@ -77,18 +77,20 @@ public class NSClientReceiver extends BroadcastReceiver {
                 break;
 
             case Intents.ACTION_NEW_TREATMENT:
+            case Intents.ACTION_REMOVED_TREATMENT:
                 if (bundle == null) break;
                 if (prefs.getBoolean("accept_nsclient_treatments", true)) {
                     final String treatment_json = bundle.getString("treatment", "");
+                    final boolean remove = action.equals(Intents.ACTION_REMOVED_TREATMENT);
                     if (treatment_json.length() > 0) {
-                        process_TREATMENT_json(treatment_json);
+                        process_TREATMENT_json(treatment_json, remove);
                     }
                     final String treatments_json = bundle.getString("treatments", "");
                     if (treatments_json.length() > 0) {
                         try {
                             final JSONArray jsonArray = new JSONArray(treatments_json);
                             for (int i = 0; i < jsonArray.length(); i++) {
-                                process_TREATMENT_json(jsonArray.getString(i));
+                                process_TREATMENT_json(jsonArray.getString(i), remove);
                             }
                         } catch (JSONException e) {
                             Log.e(TAG, "Json exception with sgvs: " + e.toString());
@@ -169,10 +171,19 @@ public class NSClientReceiver extends BroadcastReceiver {
         xdrip.getAppContext().sendBroadcast(intent);
     }
 
-    private void process_TREATMENT_json(String treatment_json) {
+    private void process_TREATMENT_json(String treatment_json, boolean remove) {
         try {
-            Log.i(TAG, "Processing treatment from NS: "+treatment_json);
-            Treatments.pushTreatmentFromJson(toTreatmentJSON(JoH.JsonStringtoMap(treatment_json)), true); // warning marked as from interactive - watch out for feedback loops
+            final HashMap<String,Object> treatment_map = JoH.JsonStringtoMap(treatment_json);
+            if(remove) {
+                final Object timestamp = treatment_map.get("mills");
+                if(timestamp instanceof Double) {
+                    Log.i(TAG, "Removing treatment from NS: "+treatment_json);
+                    Treatments.delete_by_timestamp(((Double) timestamp).longValue(), 0, true);
+                }
+            } else {
+                Log.i(TAG, "Processing treatment from NS: "+treatment_json);
+                Treatments.pushTreatmentFromJson(toTreatmentJSON(treatment_map), true); // warning marked as from interactive - watch out for feedback loops
+            }
         } catch (Exception e) {
             Log.e(TAG, "Got exception processing treatment from NS client " + e.toString());
         }
